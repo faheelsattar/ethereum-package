@@ -1,0 +1,65 @@
+log_json = true
+log_level = "info,rbuilder=debug"
+redacted_telemetry_server_port = 6061
+redacted_telemetry_server_ip = "0.0.0.0"
+full_telemetry_server_port = 6060
+full_telemetry_server_ip = "0.0.0.0"
+
+chain = "{{ .Network }}"
+reth_datadir = "{{ .DataDir }}"
+
+coinbase_secret_key = "{{ .CoinbaseSecretKey }}"
+relay_secret_key = "{{ .BuilderSecretKey }}"
+
+cl_node_url = ["{{ .CLEndpoint }}"]
+jsonrpc_server_port = 8645
+jsonrpc_server_ip = "0.0.0.0"
+el_node_ipc_path = "/tmp/reth.ipc"
+extra_data = "rbuilder-epbs"
+genesis_fork_version = "{{ .GenesisForkVersion }}"
+
+ignore_cancellable_orders = true
+
+live_builders = ["mp-ordering", "mgp-ordering"]
+
+root_hash_use_sparse_trie = true
+root_hash_compare_sparse_trie = false
+
+# Start bidding 16s before slot start. Payload attributes arrive ~12s before slot,
+# and rbuilder's block builder is fast (~100ms), so a tighter window misses all
+# notify_new_built_block calls. With -16s, bid_start_time is before payload arrival
+# and every notify call fires seal_bid.
+slot_delta_to_start_bidding_ms = -16000
+
+# ePBS Configuration
+epbs_enabled = {{ .EpbsEnabled }}
+epbs_server_port = {{ .EpbsServerPort }}
+epbs_server_ip = "0.0.0.0"
+epbs_builder_secret_key = "{{ .BuilderSecretKey }}"
+
+# ePBS P2P Configuration
+epbs_p2p_enabled = {{ .EpbsP2pEnabled }}
+epbs_p2p_bid_start_ms = {{ .EpbsP2pBidStartMs }}
+epbs_p2p_bid_end_ms = {{ .EpbsP2pBidEndMs }}
+epbs_p2p_bid_interval_ms = {{ .EpbsP2pBidIntervalMs }}
+epbs_p2p_bid_value_increment_gwei = {{ .EpbsP2pBidValueIncrementGwei }}
+# Devnet-only subsidy added to bid.value so we beat the proposer's local self-build
+# value comparison on devnets where rbuilder and proposer reth share a mempool.
+# Leave at 0 for production. See LiveEpbsBidProviderConfig::bid_value_subsidy_gwei.
+epbs_p2p_bid_value_subsidy_gwei = {{ .EpbsP2pBidValueSubsidyGwei }}
+
+[[builders]]
+name = "mgp-ordering"
+algo = "ordering-builder"
+discard_txs = true
+sorting = "mev-gas-price"
+failed_order_retries = 1
+drop_failed_orders = true
+
+[[builders]]
+name = "mp-ordering"
+algo = "ordering-builder"
+discard_txs = true
+sorting = "max-profit"
+failed_order_retries = 1
+drop_failed_orders = true

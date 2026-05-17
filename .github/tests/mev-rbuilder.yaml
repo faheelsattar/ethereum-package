@@ -1,0 +1,15 @@
+participants:
+  - el_type: geth
+    cl_type: lighthouse
+    count: 2
+mev_type: rbuilder
+rbuilder_params:
+  epbs_enabled: true
+  epbs_p2p_enabled: true
+network_params:
+  gloas_fork_epoch: 0
+  builder_count: 1
+  builder_balance: 40000
+additional_services:
+  - dora
+  - spamoor

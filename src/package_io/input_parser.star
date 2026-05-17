@@ -94,6 +94,7 @@ ATTR_TO_BE_SKIPPED_AT_ROOT = (
     "mempool_bridge_params",
     "zkboost_params",
     "buildoor_params",
+    "rbuilder_params",
     "ethereum_genesis_generator_params",
 )
 
@@ -136,6 +137,7 @@ def input_parser(plan, input_args):
     result["mempool_bridge_params"] = get_default_mempool_bridge_params()
     result["zkboost_params"] = get_default_zkboost_params()
     result["buildoor_params"] = get_default_buildoor_params()
+    result["rbuilder_params"] = get_default_rbuilder_params()
 
     if constants.NETWORK_NAME.shadowfork in result["network_params"]["network"]:
         shadow_base = result["network_params"]["network"].split("-shadowfork")[0]
@@ -241,6 +243,10 @@ def input_parser(plan, input_args):
             for sub_attr in input_args["buildoor_params"]:
                 sub_value = input_args["buildoor_params"][sub_attr]
                 result["buildoor_params"][sub_attr] = sub_value
+        elif attr == "rbuilder_params":
+            for sub_attr in input_args["rbuilder_params"]:
+                sub_value = input_args["rbuilder_params"][sub_attr]
+                result["rbuilder_params"][sub_attr] = sub_value
 
     if result.get("snooper_enabled"):
         plan.print(
@@ -258,6 +264,7 @@ def input_parser(plan, input_args):
         constants.COMMIT_BOOST_MEV_TYPE,
         constants.HELIX_MEV_TYPE,
         constants.BUILDOOR_MEV_TYPE,
+        constants.RBUILDER_MEV_TYPE,
     ):
         result = enrich_mev_extra_params(
             result,
@@ -269,7 +276,7 @@ def input_parser(plan, input_args):
         pass
     else:
         fail(
-            "Unsupported MEV type: {0}, please use 'mock', 'flashbots', 'mev-rs', 'commit-boost', 'helix' or 'buildoor' type".format(
+            "Unsupported MEV type: {0}, please use 'mock', 'flashbots', 'mev-rs', 'commit-boost', 'helix', 'buildoor' or 'rbuilder' type".format(
                 result.get("mev_type")
             )
         )
@@ -1098,6 +1105,21 @@ def input_parser(plan, input_args):
             extra_args=result["buildoor_params"]["extra_args"],
             builder_api=result["buildoor_params"]["builder_api"],
             epbs_builder=result["buildoor_params"]["epbs_builder"],
+        ),
+        rbuilder_params=struct(
+            image=result["rbuilder_params"]["image"],
+            cl_type=result["rbuilder_params"]["cl_type"],
+            cl_image=result["rbuilder_params"]["cl_image"],
+            cl_endpoint=result["rbuilder_params"]["cl_endpoint"],
+            extra_args=result["rbuilder_params"]["extra_args"],
+            epbs_enabled=result["rbuilder_params"]["epbs_enabled"],
+            epbs_server_port=result["rbuilder_params"]["epbs_server_port"],
+            epbs_p2p_enabled=result["rbuilder_params"]["epbs_p2p_enabled"],
+            epbs_p2p_bid_start_ms=result["rbuilder_params"]["epbs_p2p_bid_start_ms"],
+            epbs_p2p_bid_end_ms=result["rbuilder_params"]["epbs_p2p_bid_end_ms"],
+            epbs_p2p_bid_interval_ms=result["rbuilder_params"]["epbs_p2p_bid_interval_ms"],
+            epbs_p2p_bid_value_increment_gwei=result["rbuilder_params"]["epbs_p2p_bid_value_increment_gwei"],
+            epbs_p2p_bid_value_subsidy_gwei=result["rbuilder_params"]["epbs_p2p_bid_value_subsidy_gwei"],
         ),
     )
 
@@ -2161,6 +2183,24 @@ def get_default_buildoor_params():
     }
 
 
+def get_default_rbuilder_params():
+    return {
+        "image": constants.DEFAULT_RBUILDER_IMAGE,
+        "cl_type": constants.CL_TYPE.lighthouse,
+        "cl_image": DEFAULT_CL_IMAGES[constants.CL_TYPE.lighthouse],
+        "cl_endpoint": "",
+        "extra_args": [],
+        "epbs_enabled": True,
+        "epbs_server_port": 18551,
+        "epbs_p2p_enabled": True,
+        "epbs_p2p_bid_start_ms": -1000,
+        "epbs_p2p_bid_end_ms": 1000,
+        "epbs_p2p_bid_interval_ms": 250,
+        "epbs_p2p_bid_value_increment_gwei": 0,
+        "epbs_p2p_bid_value_subsidy_gwei": 500000000,
+    }
+
+
 def get_port_publisher_params(parameter_type, input_args=None):
     port_publisher_parameters = {
         "nat_exit_ip": "KURTOSIS_IP_ADDR_PLACEHOLDER",
@@ -2235,6 +2275,64 @@ def enrich_disable_peer_scoring(parsed_arguments_dict):
 
 # TODO perhaps clean this up into a map
 def enrich_mev_extra_params(parsed_arguments_dict, mev_prefix, mev_port, mev_type):
+    # For rbuilder ePBS mode, skip mev-boost configuration since bids go via P2P.
+    # Only inject the reth-builder participant.
+    if mev_type == constants.RBUILDER_MEV_TYPE:
+        num_participants = len(parsed_arguments_dict["participants"])
+        index_str = shared_utils.zfill_custom(
+            num_participants + 1, len(str(num_participants + 1))
+        )
+        cl_type = parsed_arguments_dict["rbuilder_params"]["cl_type"]
+        mev_participant = default_participant()
+        mev_participant["el_type"] = "reth-builder"
+        mev_participant["cl_type"] = cl_type
+        mev_participant["supernode"] = True
+
+        # CL-specific flags to keep the builder's beacon node ready to handle
+        # an early payload-attributes event (rbuilder needs ~12s pre-slot
+        # lookahead to build a competitive bid). Peer scoring is left on:
+        # earlier debug runs disabled it as a workaround for invalid bids
+        # causing peer descoring, but the bid pipeline now produces
+        # consensus-valid bids and we want descoring on so a misbehaving
+        # peer isn't silently kept around.
+        cl_extra_params = []
+        if cl_type == "lighthouse":
+            cl_extra_params = [
+                "--always-prepare-payload",
+                "--prepare-payload-lookahead",
+                "8000",
+            ]
+        elif cl_type == "prysm":
+            cl_extra_params = [
+                "--prepare-all-payloads",
+            ]
+        elif cl_type == "teku":
+            cl_extra_params = []
+        elif cl_type == "lodestar":
+            cl_extra_params = [
+                "--builder.prePayloadLookahead",
+                "8000",
+            ]
+        elif cl_type == "nimbus":
+            cl_extra_params = []
+        elif cl_type == "grandine":
+            cl_extra_params = []
+
+        mev_participant.update(
+            {
+                "el_image": parsed_arguments_dict["rbuilder_params"]["image"],
+                "cl_image": parsed_arguments_dict["rbuilder_params"]["cl_image"],
+                "cl_log_level": parsed_arguments_dict["global_log_level"],
+                "cl_extra_params": cl_extra_params,
+                "el_extra_params": parsed_arguments_dict["rbuilder_params"][
+                    "extra_args"
+                ],
+                "validator_count": 0,
+            }
+        )
+        parsed_arguments_dict["participants"].append(mev_participant)
+        return parsed_arguments_dict
+
     for index, participant in enumerate(parsed_arguments_dict["participants"]):
         index_str = shared_utils.zfill_custom(
             index + 1, len(str(len(parsed_arguments_dict["participants"])))

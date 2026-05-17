@@ -1519,6 +1519,35 @@ buildoor_params:
   # Extra parameters to pass to the buildoor service
   extra_args: []
 
+# Parameters for rbuilder ePBS P2P mode (used when mev_type is "rbuilder")
+# Requires network_params.gloas_fork_epoch: 0 and network_params.builder_count > 0
+rbuilder_params:
+  # The reth-rbuilder image to use
+  image: ethpandaops/reth-rbuilder:develop
+  # The CL type for the rbuilder's co-located beacon node (e.g. lighthouse, prysm)
+  cl_type: lighthouse
+  # The CL image for the rbuilder's co-located beacon node
+  cl_image: sigp/lighthouse:latest
+  # Extra parameters to pass to the reth-rbuilder EL client
+  extra_args: []
+  # Enable the ePBS builder API server
+  epbs_enabled: true
+  # Port for the ePBS builder API server
+  epbs_server_port: 18551
+  # Enable P2P bid broadcasting via the beacon node
+  epbs_p2p_enabled: true
+  # Milliseconds relative to slot start when bidding opens (negative = before slot start).
+  # Bids gossiped before slot start land in proposer caches in time for the slot-start
+  # `getBlock` query. -1000 matches buildoor's default and gives ~1s of margin.
+  epbs_p2p_bid_start_ms: -1000
+  # Milliseconds relative to slot start when bidding closes
+  epbs_p2p_bid_end_ms: 1000
+  # Interval between bid resubmissions in ms (0 = single bid)
+  epbs_p2p_bid_interval_ms: 250
+  # Value increment per resubmission in gwei
+  epbs_p2p_bid_value_increment_gwei: 0
+  epbs_p2p_bid_value_subsidy_gwei: 500000000
+
 # Enables Xatu Sentry for all participants
 # Defaults to false
 xatu_sentry_enabled: false
@@ -1876,6 +1905,28 @@ additional_services:
 </details>
 
 <details>
+    <summary>A 2-node Ethereum network with rbuilder in ePBS P2P mode</summary>
+
+```yaml
+participants:
+  - el_type: geth
+    cl_type: lighthouse
+    count: 2
+mev_type: rbuilder
+rbuilder_params:
+  epbs_p2p_enabled: true
+network_params:
+  gloas_fork_epoch: 0
+  builder_count: 1
+  builder_balance: 40000
+additional_services:
+  - dora
+  - spamoor
+```
+
+</details>
+
+<details>
     <summary>A 3-node Ethereum network with Helix relay for MEV-boost infrastructure</summary>
 
 ```yaml
@@ -2080,6 +2131,7 @@ The package also supports other MEV implementations:
 - `"mev_type": "mev-rs"` - Alternative relay implementation powered by [mev-rs](https://github.com/ralexstokes/mev-rs/)
 - `"mev_type": "commit-boost"` - Infrastructure powered by [commit-boost](https://github.com/Commit-Boost/commit-boost-client)
 - `"mev_type": "buildoor"` - A self-contained builder+relay service powered by [buildoor](https://github.com/ethpandaops/buildoor). Supports both legacy builder API and ePBS bidding without requiring separate relay infrastructure or a dedicated builder participant.
+- `"mev_type": "rbuilder"` - Runs [rbuilder](https://github.com/flashbots/rbuilder) in ePBS P2P mode as a dedicated reth-builder participant. Bids are submitted directly via the beacon node's P2P network (no relay or mev-boost needed). Requires `gloas_fork_epoch: 0` and `builder_count > 0` in `network_params`.
 
 Each implementation provides different features and performance characteristics suitable for various testing and development scenarios.
 

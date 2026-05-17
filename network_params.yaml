@@ -223,6 +223,19 @@ buildoor_params:
   builder_api: true
   epbs_builder: true
   extra_args: []
+rbuilder_params:
+  image: ethpandaops/reth-rbuilder:develop
+  cl_type: lighthouse
+  cl_image: sigp/lighthouse:latest
+  extra_args: []
+  epbs_enabled: true
+  epbs_server_port: 18551
+  epbs_p2p_enabled: true
+  epbs_p2p_bid_start_ms: -1000
+  epbs_p2p_bid_end_ms: 1000
+  epbs_p2p_bid_interval_ms: 250
+  epbs_p2p_bid_value_increment_gwei: 0
+  epbs_p2p_bid_value_subsidy_gwei: 500000000
 bootnodoor_params:
   image: ethpandaops/bootnodoor:latest
   min_cpu: 100

@@ -454,6 +454,21 @@ SUBCATEGORY_PARAMS = {
         "builder_api",
         "epbs_builder",
     ],
+    "rbuilder_params": [
+        "image",
+        "cl_type",
+        "cl_image",
+        "cl_endpoint",
+        "extra_args",
+        "epbs_enabled",
+        "epbs_server_port",
+        "epbs_p2p_enabled",
+        "epbs_p2p_bid_start_ms",
+        "epbs_p2p_bid_end_ms",
+        "epbs_p2p_bid_interval_ms",
+        "epbs_p2p_bid_value_increment_gwei",
+        "epbs_p2p_bid_value_subsidy_gwei",
+    ],
 }
 
 ADDITIONAL_SERVICES_PARAMS = [

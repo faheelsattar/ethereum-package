@@ -52,6 +52,7 @@ flashbots_mev_relay = import_module(
 helix_relay = import_module("./src/mev/helix/helix_relay_launcher.star")
 mock_mev = import_module("./src/mev/flashbots/mock_mev/mock_mev_launcher.star")
 buildoor = import_module("./src/mev/buildoor/buildoor_launcher.star")
+rbuilder_epbs = import_module("./src/mev/rbuilder/rbuilder_launcher.star")
 mev_custom_flood = import_module(
     "./src/mev/flashbots/mev_custom_flood/mev_custom_flood_launcher.star"
 )
@@ -244,6 +245,44 @@ def run(plan, args={}):
             enumerate(args_with_right_defaults.participants),
             global_node_selectors,
         )
+    elif args_with_right_defaults.mev_type == constants.RBUILDER_MEV_TYPE:
+        plan.print("Generating rbuilder ePBS config file")
+        # Derive builder BLS key early so it can be embedded in the config
+        rbuilder_builder_bls_key = None
+        if network_params.builder_count > 0:
+            total_vc = 0
+            for p in args_with_right_defaults.participants:
+                total_vc += p.validator_count
+            rbuilder_key_result = plan.run_sh(
+                name="derive-rbuilder-bls-key",
+                description="Deriving builder BLS private key for rbuilder ePBS",
+                run='/app/ethdo account derive --mnemonic="{0}" --path="m/12381/3600/{1}/0/0" --show-private-key | grep "Private key" | sed "s/Private key: 0x//" | tr -d "\n"'.format(
+                    network_params.preregistered_validator_keys_mnemonic,
+                    total_vc,
+                ),
+                image="wealdtech/ethdo:latest",
+                tolerations=shared_utils.get_tolerations(
+                    global_tolerations=global_tolerations
+                ),
+                node_selectors=global_node_selectors,
+            )
+            rbuilder_builder_bls_key = rbuilder_key_result.output
+        # Use prefunded_accounts[1] for coinbase to avoid collision with buildoor's
+        # wallet_key (which uses [0]); falls back to [0] if only one is available.
+        rbuilder_coinbase_key = (
+            prefunded_accounts[1].private_key
+            if len(prefunded_accounts) > 1
+            else prefunded_accounts[0].private_key
+        )
+        rbuilder_epbs_config = rbuilder_epbs.new_builder_config(
+            plan,
+            network_params,
+            args_with_right_defaults.rbuilder_params,
+            enumerate(args_with_right_defaults.participants),
+            global_node_selectors,
+            rbuilder_builder_bls_key,
+            rbuilder_coinbase_key,
+        )
 
     plan.print(
         "Launching participant network with {0} participants and the following network params {1}".format(
@@ -428,6 +467,13 @@ def run(plan, args={}):
         )
         mev_endpoints.append(endpoint)
         mev_endpoint_names.append(constants.BUILDOOR_MEV_TYPE)
+    elif (
+        args_with_right_defaults.mev_type
+        and args_with_right_defaults.mev_type == constants.RBUILDER_MEV_TYPE
+    ):
+        plan.print(
+            "rbuilder ePBS mode: bids are submitted via beacon node P2P (no relay/mev-boost needed)"
+        )
     elif args_with_right_defaults.mev_type and (
         args_with_right_defaults.mev_type == constants.FLASHBOTS_MEV_TYPE
         or args_with_right_defaults.mev_type == constants.MEV_RS_MEV_TYPE

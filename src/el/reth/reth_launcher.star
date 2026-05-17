@@ -10,6 +10,9 @@ lighthouse = import_module("../../cl/lighthouse/lighthouse_launcher.star")
 flashbots_rbuilder = import_module(
     "../../mev/flashbots/mev_builder/mev_builder_launcher.star"
 )
+rbuilder_epbs = import_module(
+    "../../mev/rbuilder/rbuilder_launcher.star"
+)
 
 RPC_PORT_NUM = 8545
 WS_PORT_NUM = 8546
@@ -307,6 +310,36 @@ def get_config(
                     cl_client_name,
                     constants.EL_TYPE.reth_builder,
                     lighthouse.BEACON_HTTP_PORT_NUM,
+                ),
+            }
+        )
+    elif launcher.builder_type == constants.RBUILDER_MEV_TYPE:
+        image = participant.el_image
+        cl_client_name = service_name.split("-")[4]
+        cl_http_port = rbuilder_epbs.get_cl_http_port(cl_client_name)
+        cmd.append("--rbuilder.config=" + rbuilder_epbs.MEV_FILE_PATH_ON_CONTAINER)
+        cmd.append("--engine.persistence-threshold=0")
+        cmd.append("--engine.memory-block-buffer-target=0")
+        # Force V1 (legacy) storage layout. rbuilder's eth-sparse-mpt uses reth's
+        # `Proof::multiproof` API which goes through `LegacyKeyAdapter` (65-byte
+        # unpacked StoredNibblesSubKey). The default V2 layout writes packed (33-byte)
+        # entries to the same MDBX table, causing decode panics in nibbles.rs:133
+        # ("range end index out of range") when rbuilder reads them back.
+        # Verified still load-bearing on reth rev `bal-devnet-6` as of 2026-05-17.
+        cmd.append("--storage.v2=false")
+        cmd.append(
+            "--txpool.no-local-transactions-propagation"
+        )
+        files[
+            rbuilder_epbs.MEV_BUILDER_MOUNT_DIRPATH_ON_SERVICE
+        ] = rbuilder_epbs.MEV_BUILDER_FILES_ARTIFACT_NAME
+        env_vars.update(
+            {
+                "CL_ENDPOINT": "http://cl-{0}-{1}-{2}:{3}".format(
+                    participant_index + 1,
+                    cl_client_name,
+                    constants.EL_TYPE.reth_builder,
+                    cl_http_port,
                 ),
             }
         )
